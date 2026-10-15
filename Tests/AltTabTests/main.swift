@@ -3,4 +3,5 @@
 exitWithTestResult([
     windowFilterTests,
     mruWindowListTests,
+    gridNavigatorTests,
 ])
