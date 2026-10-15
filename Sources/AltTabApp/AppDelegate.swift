@@ -15,6 +15,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusMenu: StatusMenuController?
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
+        DiagLog.log("launch: ax=\(permissions.hasAccessibility) screenRecording=\(permissions.hasScreenRecording)")
         coordinator.start()
         statusMenu = StatusMenuController(permissions: permissions)
         permissions.promptIfMissing()

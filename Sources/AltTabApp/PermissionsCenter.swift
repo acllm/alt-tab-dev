@@ -14,25 +14,31 @@ public final class PermissionsCenter {
     }
 
     public var hasScreenRecording: Bool {
-        // Try to capture a pixel of some other app's window: without the
-        // permission CG returns a nil/empty image even when windows exist.
-        var windowIDs: [UInt32] = []
+        // Without the permission CGWindowListCreateImage degrades silently:
+        // it still returns an image, but composited from the current screen
+        // (occluded windows are unreadable). The reliable signal is the CG
+        // window list: other apps' window *titles* are stripped without the
+        // grant. If any other app shows a title, the permission is on.
         let option: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-        if let list = CGWindowListCopyWindowInfo(option, kCGNullWindowID) as? [[String: Any]] {
-            let selfPID = ProcessInfo.processInfo.processIdentifier
-            windowIDs = list.compactMap { entry in
-                guard
-                    let id = entry[kCGWindowNumber as String] as? UInt32,
-                    let pid = entry[kCGWindowOwnerPID as String] as? Int32,
-                    pid != selfPID,
-                    (entry[kCGWindowLayer as String] as? Int ?? 0) == 0
-                else { return nil }
-                return id
+        guard let list = CGWindowListCopyWindowInfo(option, kCGNullWindowID) as? [[String: Any]] else {
+            return false
+        }
+        let selfPID = ProcessInfo.processInfo.processIdentifier
+        for entry in list {
+            guard
+                let pid = entry[kCGWindowOwnerPID as String] as? Int32,
+                pid != selfPID,
+                (entry[kCGWindowLayer as String] as? Int ?? 0) == 0
+            else { continue }
+            if let title = entry[kCGWindowName as String] as? String, !title.isEmpty {
+                return true
             }
         }
-        guard let probe = windowIDs.first else { return true } // nothing to probe
-        let bounds = CGRect(x: 0, y: 0, width: 1, height: 1)
-        return CGCompat.windowImage(bounds: bounds, listOption: [], windowID: probe, imageOption: [.nominalResolution]) != nil
+        // Saw other apps' windows but none with a title: treat as denied.
+        return list.contains { entry in
+            guard let pid = entry[kCGWindowOwnerPID as String] as? Int32 else { return false }
+            return pid != selfPID && (entry[kCGWindowLayer as String] as? Int ?? 0) == 0
+        } == false
     }
 
     public func promptIfMissing() {

@@ -55,6 +55,12 @@ public final class AppCoordinator {
         case .hotkey:
             coreEvent = .hotkeyTriggered
             alwaysConsume = true
+        case .appWindowsHotkey:
+            // Frontmost app's windows only (⌥+`). The switcher itself never
+            // activates, so frontmost is still the app being used.
+            let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1
+            coreEvent = .appWindowsHotkeyTriggered(pid: pid)
+            alwaysConsume = true
         case .tab(let shift):
             coreEvent = .tabPressed(shift: shift)
         case .arrow(let direction):

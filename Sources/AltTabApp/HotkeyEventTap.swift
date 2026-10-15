@@ -8,6 +8,8 @@ import AltTabCore
 public enum HotkeyEvent {
     /// ⌥+Tab pressed (the show/advance shortcut).
     case hotkey
+    /// ⌥+` pressed: switch between the current app's windows only.
+    case appWindowsHotkey
     /// Tab (or ⇧+Tab) pressed without the shortcut modifier.
     case tab(shift: Bool)
     case arrow(MoveDirection)
@@ -104,6 +106,8 @@ public final class HotkeyEventTap {
                 translated = optionHeld
                     ? .hotkey
                     : .tab(shift: event.flags.contains(.maskShift))
+            case 50: // ` (backtick) — app-windows cycling, like macOS' native ⌥+`
+                translated = optionHeld ? .appWindowsHotkey : nil
             case 123: translated = .arrow(.left)
             case 124: translated = .arrow(.right)
             case 125: translated = .arrow(.down)

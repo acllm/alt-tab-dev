@@ -18,6 +18,9 @@ public enum SwitcherEffect: Equatable {
 public enum SwitcherEvent {
     /// The show shortcut fired (modifier held + trigger key pressed).
     case hotkeyTriggered
+    /// The app-windows shortcut fired (⌥+`): switch only between windows of
+    /// the app with this pid.
+    case appWindowsHotkeyTriggered(pid: Int32)
     /// Tab (or shift-tab) pressed while shown.
     case tabPressed(shift: Bool)
     /// An arrow key pressed while shown.
@@ -43,6 +46,12 @@ public enum SwitcherEvent {
 public final class SwitcherState {
     public private(set) var isVisible: Bool = false
 
+    private enum Scope: Equatable {
+        case allWindows
+        case appWindows(pid: Int32)
+    }
+    private var scope: Scope = .allWindows
+
     private let mru: MruWindowList
     private var navigator = GridNavigator(count: 0)
 
@@ -50,18 +59,39 @@ public final class SwitcherState {
         mru = MruWindowList(seed: windows)
     }
 
-    /// The current MRU-ordered window list.
+    /// The list the switcher currently displays: the MRU list, filtered to
+    /// the active scope (all windows, or one app's windows for ⌥+`).
     public var windows: [WindowModel] {
-        return mru.windows
+        switch scope {
+        case .allWindows:
+            return mru.windows
+        case .appWindows(let pid):
+            return mru.windows.filter { $0.ownerPID == pid }
+        }
+    }
+
+    private func displayWindow(at index: Int) -> WindowModel? {
+        let display = windows
+        guard display.indices.contains(index) else { return nil }
+        return display[index]
     }
 
     public func send(_ event: SwitcherEvent) -> [SwitcherEffect] {
         switch event {
-        case .hotkeyTriggered:
-            if isVisible {
+        case .appWindowsHotkeyTriggered(let pid):
+            if isVisible, scope == .appWindows(pid: pid) {
                 navigator.next()
                 return [.updateFocus(navigator.index)]
             }
+            scope = .appWindows(pid: pid)
+            return show()
+
+        case .hotkeyTriggered:
+            if isVisible, scope == .allWindows {
+                navigator.next()
+                return [.updateFocus(navigator.index)]
+            }
+            scope = .allWindows
             return show()
 
         case .tabPressed(let shift):
@@ -80,32 +110,36 @@ public final class SwitcherState {
         case .escapePressed:
             guard isVisible else { return [] }
             isVisible = false
+            scope = .allWindows
             return [.hide]
 
         case .windowsChanged(let living, let visibleFrontToBack):
-            let focusedID = isVisible ? mru.window(at: navigator.index)?.id : nil
+            let focusedID = isVisible ? displayWindow(at: navigator.index)?.id : nil
             mru.reconcile(living: living)
             mru.applySnapshot(frontToBack: visibleFrontToBack)
             guard isVisible else { return [] }
             // Keep the focus ring on the same window when it survives the
             // change; otherwise clamp the old index into the new bounds.
-            let fallback = min(navigator.index, max(0, windows.count - 1))
-            let start = focusedID.flatMap { mru.indexOf(id: $0) } ?? fallback
-            navigator = GridNavigator(count: windows.count, startIndex: start)
-            return [.reload(windows, focusIndex: navigator.index)]
+            let display = windows
+            let fallback = min(navigator.index, max(0, display.count - 1))
+            let start = focusedID.flatMap { id in display.firstIndex(where: { $0.id == id }) } ?? fallback
+            navigator = GridNavigator(count: display.count, startIndex: start)
+            return [.reload(display, focusIndex: navigator.index)]
         }
     }
 
     private func show() -> [SwitcherEffect] {
-        guard !windows.isEmpty else { return [] }
-        navigator = GridNavigator(count: windows.count, startIndex: min(1, windows.count - 1))
+        let display = windows
+        guard !display.isEmpty else { return [] }
+        navigator = GridNavigator(count: display.count, startIndex: min(1, display.count - 1))
         isVisible = true
-        return [.show(windows, focusIndex: navigator.index)]
+        return [.show(display, focusIndex: navigator.index)]
     }
 
     private func commit() -> [SwitcherEffect] {
-        guard isVisible, let target = mru.window(at: navigator.index) else { return [] }
+        guard isVisible, let target = displayWindow(at: navigator.index) else { return [] }
         isVisible = false
+        scope = .allWindows
         mru.focus(id: target.id)
         return [.focusWindow(target), .hide]
     }

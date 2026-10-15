@@ -5,4 +5,5 @@ exitWithTestResult([
     mruWindowListTests,
     gridNavigatorTests,
     switcherStateTests,
+    appScopeTests,
 ])
