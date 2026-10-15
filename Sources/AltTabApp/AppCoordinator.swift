@@ -47,6 +47,7 @@ public final class AppCoordinator {
     /// consumed only while the switcher is on screen.
     private func handleHotkey(_ event: HotkeyEvent) -> Bool {
         let wasVisible = state.isVisible
+        DiagLog.log("hotkey event: \(event) wasVisible=\(wasVisible)")
 
         let coreEvent: SwitcherEvent
         var alwaysConsume = false
@@ -67,6 +68,7 @@ public final class AppCoordinator {
         }
 
         apply(state.send(coreEvent))
+        DiagLog.log("→ handled: switcher visible=\(state.isVisible)")
         return alwaysConsume || wasVisible
     }
 

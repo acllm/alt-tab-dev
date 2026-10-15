@@ -35,15 +35,21 @@ public final class ThumbnailProvider {
         cache = cache.filter { ids.contains($0.key) }
 
         queue.async {
-            for window in windows where !window.minimized {
+            for window in windows where !window.minimized && !window.frame.isEmpty {
                 if self.cache[window.id] == nil {
-                    let bounds = CGRect(origin: .zero, size: self.cellSize)
+                    // screenBounds takes *screen* coordinates: passing the
+                    // window's own frame captures exactly that window
+                    // (CGRect.null returns a whole-screen grab instead).
+                    // Aspect-fit scaling happens at draw time.
                     let image = CGCompat.windowImage(
-                        bounds: bounds,
+                        bounds: window.frame,
                         listOption: [],
                         windowID: window.id,
-                        imageOption: [.nominalResolution, .boundsIgnoreFraming]
-                    ).map { NSImage(cgImage: $0, size: self.cellSize) }
+                        imageOption: [.boundsIgnoreFraming]
+                    ).map { cgImage in
+                        NSImage(cgImage: cgImage,
+                                size: NSSize(width: cgImage.width, height: cgImage.height))
+                    }
                     if let image {
                         self.cache[window.id] = image
                     }

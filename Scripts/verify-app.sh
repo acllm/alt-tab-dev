@@ -10,9 +10,11 @@ cd "$(dirname "$0")/.."
 DIR=/tmp/alttab-e2e
 APP="build/AltTab Dev.app"
 
-rm -f "$DIR"/step* "$DIR"/vshot* "$DIR"/done
+rm -f "$DIR"/step* "$DIR"/vshot* "$DIR"/done "$DIR"/diag.txt
 
 ./Scripts/make-app-bundle.sh >/dev/null
+# `open` won't pass args to an already-running instance — quit it first.
+pkill -x AltTab 2>/dev/null; sleep 1
 open "$APP" --args --selftest
 
 capture_at_step() {

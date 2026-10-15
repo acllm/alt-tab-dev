@@ -232,7 +232,7 @@ public final class SwitcherView: NSView {
             width: bounds.width - Metrics.outerPadding * 2,
             height: Metrics.footerHeight
         )
-        let text = "\(windows.count) 个窗口 · Tab / ←→↑↓ 选择 · ↵ 或松开 ⌥ 切换 · esc 取消"
+        let text = "\(windows.count) 个窗口 · Tab / ←→↑↓ 选择 · ↵ 或松开 ⌥ 切换"
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 11),
             .foregroundColor: NSColor.white.withAlphaComponent(0.6),

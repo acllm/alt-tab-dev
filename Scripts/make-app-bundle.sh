@@ -39,7 +39,15 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-# Ad-hoc signature: stable identity for the TCC grants across rebuilds.
-codesign --force --sign - "$APP"
+# Sign with the stable local identity (see README: one-time keychain setup).
+# A stable signing identity keeps the TCC grants valid across rebuilds —
+# ad-hoc signatures change on every build and silently invalidate them.
+IDENTITY="AltTab Dev Local Signing"
+if security find-identity | grep -q "$IDENTITY"; then
+    codesign --force --sign "$IDENTITY" "$APP"
+else
+    echo "warning: '$IDENTITY' not in keychain, falling back to ad-hoc (TCC grants will not survive rebuilds)" >&2
+    codesign --force --sign - "$APP"
+fi
 
 echo "Bundled: $APP"

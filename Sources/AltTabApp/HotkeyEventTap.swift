@@ -52,7 +52,10 @@ public final class HotkeyEventTap {
                 return nil
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else { return false }
+        ) else {
+            DiagLog.log("event tap: CREATE FAILED (accessibility not granted?)")
+            return false
+        }
 
         self.tap = tap
         if let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) {
@@ -60,6 +63,7 @@ public final class HotkeyEventTap {
             CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         }
         CGEvent.tapEnable(tap: tap, enable: true)
+        DiagLog.log("event tap: STARTED ok")
         return true
     }
 
@@ -105,7 +109,9 @@ public final class HotkeyEventTap {
             case 125: translated = .arrow(.down)
             case 126: translated = .arrow(.up)
             case 36, 76: translated = .enter
-            case 53: translated = .escape
+            // Escape is deliberately not intercepted: per product decision the
+            // switcher has no cancel-on-escape behavior, and the key should
+            // pass through to whatever would otherwise receive it.
             default: translated = nil
             }
             if let translated, handler(translated) {

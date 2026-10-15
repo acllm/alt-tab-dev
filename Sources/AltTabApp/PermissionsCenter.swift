@@ -39,8 +39,15 @@ public final class PermissionsCenter {
         if !hasAccessibility {
             requestAccessibility()
         }
+        // The screen-recording alert is advisory (the app degrades to
+        // icon-only thumbnails without it) — nagging on every launch is
+        // worse than the missing feature. Show it once, ever.
         if !hasScreenRecording {
-            requestScreenRecording()
+            let defaultsKey = "didPromptScreenRecording"
+            if !UserDefaults.standard.bool(forKey: defaultsKey) {
+                UserDefaults.standard.set(true, forKey: defaultsKey)
+                requestScreenRecording()
+            }
         }
     }
 
