@@ -2,4 +2,5 @@
 // Add new suites to the list below as they are created.
 exitWithTestResult([
     windowFilterTests,
+    mruWindowListTests,
 ])
