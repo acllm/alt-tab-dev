@@ -20,10 +20,13 @@ let package = Package(
             path: "Sources/AltTab",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
-        .testTarget(
-            name: "AltTabCoreTests",
+        // Test runner executable. This CLT-only machine ships neither a
+        // usable XCTest nor a runnable swift-testing integration, so TDD runs
+        // on a small in-repo harness driven by `swift run alttab-tests`.
+        .executableTarget(
+            name: "AltTabTests",
             dependencies: ["AltTabCore"],
-            path: "Tests/AltTabCoreTests",
+            path: "Tests/AltTabTests",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]
