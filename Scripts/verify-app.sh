@@ -68,14 +68,35 @@ EOF
 
 if [ "$LOCKED" = "yes" ]; then
     echo "NOTE: screen is locked — lock layer hides all windows; using CG evidence only."
-    # Window-server evidence: the panel must exist on-screen with a sane frame.
+    # Window-server evidence: the panel must exist on-screen with a sane
+    # frame (non-empty, fully inside one of the screens from diag.txt —
+    # no hardcoded geometry, so any display setup works).
     swift - "$DIR" <<'EOF' || ok=0
 import CoreGraphics
 import Foundation
 let dir = CommandLine.arguments[1]
 let diag = try String(contentsOfFile: "\(dir)/diag.txt")
-guard let frameLine = diag.split(separator: "\n").first(where: { $0.hasPrefix("panel.frame") }),
-      let numberLine = diag.split(separator: "\n").first(where: { $0.hasPrefix("panel.windowNumber") })
+let lines = diag.split(separator: "\n")
+func diagLine(_ prefix: String) -> Substring? {
+    lines.first { $0.hasPrefix(prefix) }
+}
+func numbers(in line: Substring) -> [Double] {
+    var result: [Double] = []
+    var current = ""
+    for ch in line {
+        if ch.isNumber || ch == "." || ch == "-" { current.append(ch) }
+        else if !current.isEmpty {
+            if let d = Double(current) { result.append(d) }
+            current = ""
+        }
+    }
+    if !current.isEmpty, let d = Double(current) { result.append(d) }
+    return result
+}
+guard let frameLine = diagLine("panel.frame"),
+      let numberLine = diagLine("panel.windowNumber"),
+      let screensLine = diagLine("NSScreen.screens"),
+      numbers(in: frameLine).count >= 4
 else { print("CG-EVIDENCE: no diagnostics"); exit(1) }
 let number = Int(numberLine.split(whereSeparator: { !$0.isNumber }).last ?? "0") ?? 0
 guard number > 0 else { print("CG-EVIDENCE: no window number"); exit(1) }
@@ -83,8 +104,19 @@ var found = false
 if let list = CGWindowListCopyWindowInfo([.optionAll], CGWindowID(number)) as? [[String: Any]] {
     found = !list.isEmpty
 }
-let frameOK = frameLine.contains("1016.0") && frameLine.contains("758.0")
-print("CG-EVIDENCE: window \(number) in window server: \(found), expected frame: \(frameOK)")
+let f = numbers(in: frameLine)
+let frame = CGRect(x: f[0], y: f[1], width: f[2], height: f[3])
+let sn = numbers(in: screensLine)
+var screens: [CGRect] = []
+var i = 0
+while i + 3 < sn.count {
+    screens.append(CGRect(x: sn[i], y: sn[i + 1], width: sn[i + 2], height: sn[i + 3]))
+    i += 4
+}
+let frameOK = frame.width > 0 && frame.height > 0
+    && screens.contains { frame.minX >= $0.minX && frame.maxX <= $0.maxX
+                       && frame.minY >= $0.minY && frame.maxY <= $0.maxY }
+print("CG-EVIDENCE: window \(number) in window server: \(found), frame \(frame) within a screen: \(frameOK)")
 exit(found && frameOK ? 0 : 1)
 EOF
     if [ "$ok" = 1 ]; then
