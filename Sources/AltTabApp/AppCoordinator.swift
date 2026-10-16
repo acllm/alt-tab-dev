@@ -83,6 +83,9 @@ public final class AppCoordinator {
             switch effect {
             case .show(let windows, let focusIndex):
                 panel.showSwitcher(windows: windows, focusIndex: focusIndex)
+                // Fresh invocation → recapture every window so thumbnails
+                // match current content instead of the first-ever capture.
+                thumbnails.beginSession()
                 loadThumbnails(for: windows)
 
             case .reload(let windows, let focusIndex):

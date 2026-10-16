@@ -5,29 +5,48 @@ import AltTabCore
 
 /// Captures window screenshots for the switcher cells.
 ///
-/// The Screen Recording permission is unreliable to detect on modern macOS:
-/// when missing, CGWindowListCreateImage *silently degrades* — it still
-/// returns images, but they are composites of whatever is currently on
-/// screen at the window's rectangle (every cell shows the frontmost app).
-/// Showing those wrong thumbnails is worse than showing none, so before
-/// capturing anything the provider runs a behavioral probe: capture two
-/// different windows and compare content fingerprints. Captures are only
-/// enabled when the two are actually distinguishable; otherwise every cell
-/// renders the app icon — stable, correct, and permission-free.
+/// Two things must hold for a capture to show the right pixels, both
+/// established empirically on macOS 15 and both matching the SDK header:
+///
+///  - The list option must be `.optionIncludingWindow` ("use only the
+///    window specified by windowID"). Any other list option ignores the
+///    window id — with `.optionAll` (raw 0, what `[]` passes) the call
+///    composites *every on-screen window* at the requested rect, so each
+///    thumbnail shows whatever happens to be on screen there: the
+///    frontmost app, another app's window, or bare desktop.
+///  - The Screen Recording permission must be granted; without it the
+///    window "can't be read" and the API returns a transparent black
+///    image (a blank rounded rectangle in the cell). The official
+///    CGPreflightScreenCaptureAccess() check gates this reliably — the
+///    behavioral probe it replaced flipped randomly depending on what
+///    happened to be on screen at first launch.
+///
+/// With both satisfied, `CGRect.null` bounds returns exactly the window's
+/// own rectangle, occluders excluded, even for fully covered windows.
+/// Off-Space and minimized windows have no readable surface and come back
+/// nil — those cells honestly fall back to the app icon.
+///
+/// Threading: all mutable state lives on the main thread; only the
+/// CGWindowListCreateImage calls run on the capture queue.
 public final class ThumbnailProvider {
     private let repository: WindowRepository
     private var cache: [UInt32: NSImage] = [:]
     private let queue = DispatchQueue(label: "alttab.thumbnails", qos: .userInteractive)
 
-    /// Decided once per session by the behavioral probe; nil = not probed yet.
-    private var capturesEnabled: Bool?
+    /// Re-checked at every load: a grant + app relaunch takes effect
+    /// without restarting the provider. Main thread only.
+    private var capturesPermitted = false
+    /// Set by beginSession() so the next load recaptures every window —
+    /// the cache alone would keep showing each window's first-ever
+    /// capture forever. Main thread only.
+    private var recaptureAll = false
 
     public init(repository: WindowRepository) {
         self.repository = repository
     }
 
     public func cachedThumbnail(for id: UInt32) -> NSImage? {
-        guard capturesEnabled == true else { return nil }
+        guard capturesPermitted else { return nil }
         return cache[id]
     }
 
@@ -35,102 +54,74 @@ public final class ThumbnailProvider {
         return repository.appIcon(pid: window.ownerPID)
     }
 
-    /// Kick off captures for `windows` (skips minimized ones). Each capture
-    /// is delivered on the main thread via `onUpdate`.
+    /// Start a fresh switcher invocation: the next loadThumbnails pass
+    /// recaptures every window. Old images stay on screen until their
+    /// replacement lands, so cells never flash back to icons.
+    public func beginSession() {
+        recaptureAll = true
+    }
+
+    /// Kick off captures for `windows` (skips minimized ones). Each
+    /// captured image is stored and delivered on the main thread via
+    /// `onUpdate`.
     public func loadThumbnails(for windows: [WindowModel], onUpdate: @escaping (UInt32) -> Void) {
         // Drop cache entries of windows that no longer exist.
         let ids = Set(windows.map(\.id))
         cache = cache.filter { ids.contains($0.key) }
 
+        capturesPermitted = CGPreflightScreenCaptureAccess()
+        if !capturesPermitted {
+            DiagLog.log("thumbnails: screen recording not granted — using app icons")
+            return
+        }
+
+        let recapture = recaptureAll
+        recaptureAll = false
+        let targets = windows.filter {
+            !$0.minimized && !$0.frame.isEmpty && (recapture || cache[$0.id] == nil)
+        }
+        guard !targets.isEmpty else { return }
+
         queue.async {
-            if self.capturesEnabled == nil {
-                self.capturesEnabled = self.probeCaptureAbility(windows)
-                DiagLog.log("thumbnails: capture probe → \(self.capturesEnabled == true ? "ENABLED (real window content)" : "DISABLED (degraded captures; using app icons)")")
-            }
-            guard self.capturesEnabled == true else { return }
-
-            for window in windows where !window.minimized && !window.frame.isEmpty {
-                if self.cache[window.id] == nil {
-                    // screenBounds takes *screen* coordinates: passing the
-                    // window's own frame captures exactly that window
-                    // (CGRect.null returns a whole-screen grab instead).
-                    // Aspect-fit scaling happens at draw time.
-                    let image = CGCompat.windowImage(
-                        bounds: window.frame,
-                        listOption: [],
-                        windowID: window.id,
-                        imageOption: [.boundsIgnoreFraming]
-                    ).map { cgImage in
-                        NSImage(cgImage: cgImage,
-                                size: NSSize(width: cgImage.width, height: cgImage.height))
-                    }
-                    if let image {
-                        self.cache[window.id] = image
-                    }
-                }
+            for window in targets {
+                // .null bounds = "the bounding box of the specified
+                // windows" — with .optionIncludingWindow that is exactly
+                // this window's rect, in whatever Space it lives, with no
+                // coordinate math of our own to get wrong.
+                guard let cgImage = CGCompat.windowImage(
+                    bounds: .null,
+                    listOption: .optionIncludingWindow,
+                    windowID: window.id,
+                    imageOption: [.boundsIgnoreFraming, .nominalResolution]
+                ), !Self.isBlank(cgImage) else { continue }
+                let image = NSImage(cgImage: cgImage,
+                                    size: NSSize(width: cgImage.width, height: cgImage.height))
                 let id = window.id
-                DispatchQueue.main.async { onUpdate(id) }
+                DispatchQueue.main.async {
+                    self.cache[id] = image
+                    onUpdate(id)
+                }
             }
         }
     }
 
-    // MARK: - Behavioral probe
-
-    /// Decide whether window captures return real window content.
-    ///
-    /// Method: pick a non-frontmost window (almost always at least partly
-    /// occluded), capture it through the window API, and crop the same
-    /// rectangle out of a full-screen capture. In degraded (unauthorized)
-    /// mode the window API silently composites from the screen, so the two
-    /// match exactly; with the permission working, an occluded window's own
-    /// content differs from what the screen shows there.
-    /// Conservative by design: a false "disabled" just means app icons.
-    private func probeCaptureAbility(_ windows: [WindowModel]) -> Bool {
-        let candidates = windows.filter { !$0.minimized && !$0.frame.isEmpty }
-        guard candidates.count >= 2 else { return false }
-        let probe = candidates[1] // MRU order: not the frontmost window
-
-        guard let windowImage = CGCompat.windowImage(
-            bounds: probe.frame, listOption: [], windowID: probe.id,
-            imageOption: [.boundsIgnoreFraming]
-        ) else { return false }
-
-        guard let screenImage = CGDisplayCreateImage(CGMainDisplayID()),
-              let scale = NSScreen.main?.backingScaleFactor, scale > 0
-        else { return false }
-
-        // probe.frame is in global points (top-left origin, same axis as the
-        // captured screen image); convert to pixels and clamp to bounds.
-        let pixelRect = CGRect(
-            x: probe.frame.minX * scale, y: probe.frame.minY * scale,
-            width: probe.frame.width * scale, height: probe.frame.height * scale
-        ).intersection(CGRect(x: 0, y: 0, width: screenImage.width, height: screenImage.height))
-        guard !pixelRect.isEmpty, let screenRegion = screenImage.cropping(to: pixelRect) else {
-            return false
-        }
-
-        return fingerprint(windowImage) != fingerprint(screenRegion)
-    }
-
-    /// 8x8 grayscale average hash — robust to scaling, good enough to tell
-    /// "two different windows" from "the same screen composite twice".
-    private func fingerprint(_ image: CGImage) -> UInt64 {
-        let side = 8
-        var pixels = [UInt8](repeating: 0, count: side * side)
-        let ctx = CGContext(
+    /// Detect the documented degraded return — "a transparent black
+    /// image" — which shows up as an empty rectangle in the cell. Real
+    /// window content always has opaque pixels somewhere.
+    private static func isBlank(_ image: CGImage) -> Bool {
+        let side = 16
+        var pixels = [UInt8](repeating: 0, count: side * side * 4)
+        guard let ctx = CGContext(
             data: &pixels,
             width: side, height: side,
-            bitsPerComponent: 8, bytesPerRow: side,
-            space: CGColorSpaceCreateDeviceGray(),
-            bitmapInfo: CGImageAlphaInfo.none.rawValue
-        )
-        ctx?.interpolationQuality = .medium
-        ctx?.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
-        let mean = pixels.reduce(0) { $0 + Int($1) } / pixels.count
-        var hash: UInt64 = 0
-        for (i, pixel) in pixels.enumerated() where Int(pixel) > mean {
-            hash |= 1 << UInt64(i)
+            bitsPerComponent: 8, bytesPerRow: side * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return false }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
+        for i in stride(from: 3, to: pixels.count, by: 4) where pixels[i] > 8 {
+            return false
         }
-        return hash
+        return true
     }
 }

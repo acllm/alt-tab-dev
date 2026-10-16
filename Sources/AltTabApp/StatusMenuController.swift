@@ -1,12 +1,12 @@
 import AppKit
 
 /// Faceless app has no Dock icon — a status bar item is the only way out.
+/// Quit only: permission guidance happens once at launch (PermissionsCenter
+/// .promptIfMissing), so there is no settings surface to expose here yet.
 public final class StatusMenuController: NSObject {
     private let item: NSStatusItem
-    private let permissions: PermissionsCenter
 
-    public init(permissions: PermissionsCenter) {
-        self.permissions = permissions
+    public override init() {
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
 
@@ -16,15 +16,8 @@ public final class StatusMenuController: NSObject {
         }
 
         let menu = NSMenu()
-        let permissionsItem = menu.addItem(withTitle: "权限设置…", action: #selector(openPermissions), keyEquivalent: "")
-        permissionsItem.target = self
-        menu.addItem(.separator())
         let quitItem = menu.addItem(withTitle: "退出 AltTab", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quitItem.target = NSApp
         item.menu = menu
-    }
-
-    @objc private func openPermissions() {
-        permissions.promptIfMissing()
     }
 }
