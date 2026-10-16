@@ -38,11 +38,23 @@ public final class PermissionsCenter {
     }
 
     private func requestScreenRecording() {
-        showAlert(
-            title: "需要「屏幕录制」权限",
-            message: "AltTab 需要屏幕录制权限来截取窗口缩略图与读取窗口标题。\n请在系统设置中勾选 AltTab 后重启应用。不授权仍可切换窗口，但没有缩略图。"
-        )
-        openSettings(pane: "Privacy_ScreenCapture")
+        // CGRequestScreenCaptureAccess registers the app with TCC and shows
+        // the system prompt while the state is undetermined. Without this
+        // call a fresh install never appears in the Screen Recording list
+        // the guidance below points at, leaving nothing to toggle. It is
+        // synchronous while the system dialog is up, so run it off-main;
+        // it returns false when already denied (remembered) or just now.
+        DispatchQueue.global(qos: .userInitiated).async {
+            let granted = CGRequestScreenCaptureAccess()
+            DispatchQueue.main.async {
+                guard !granted else { return }
+                self.showAlert(
+                    title: "需要「屏幕录制」权限",
+                    message: "AltTab 需要屏幕录制权限来截取窗口缩略图与读取窗口标题。\n请在系统设置中勾选 AltTab 后重启应用。不授权仍可切换窗口，但没有缩略图。"
+                )
+                self.openSettings(pane: "Privacy_ScreenCapture")
+            }
+        }
     }
 
     private func showAlert(title: String, message: String) {
