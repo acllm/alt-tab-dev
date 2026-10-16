@@ -14,7 +14,11 @@ rm -rf "$APP"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp .build/release/AltTab "$CONTENTS/MacOS/AltTab"
 
-cat > "$CONTENTS/Info.plist" <<'PLIST'
+# Version: taken from ALT_TAB_VERSION (CI release builds) or git tag, else 0.0.0-dev.
+VERSION="${ALT_TAB_VERSION:-$(git describe --tags --exact-match 2>/dev/null || true)}"
+VERSION="${VERSION:-0.0.0-dev}"
+
+cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -30,7 +34,7 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>${VERSION}</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSHighResolutionCapable</key>

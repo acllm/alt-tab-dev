@@ -1,5 +1,7 @@
 # AltTab Dev
 
+[![CI](https://github.com/acllm/alt-tab-dev/actions/workflows/ci.yml/badge.svg)](https://github.com/acllm/alt-tab-dev/actions/workflows/ci.yml)
+
 [alt-tab-macos](https://github.com/lwouis/alt-tab-macos) 核心功能的 Swift 复刻：Windows 风格的 ⌥+Tab 窗口切换器。纯 Swift Package 项目（无需 Xcode 工程文件），核心逻辑 100% 单元测试覆盖（TDD 开发）。
 
 按住 **⌥ (Option) 再按 Tab** 呼出切换器：所有窗口（含最小化）以网格展示，Tab / 方向键移动焦点，松开 ⌥ 或按 ↵ 切换到选中窗口。**⌥+`** 只在当前应用的窗口间循环。
@@ -13,7 +15,24 @@
 - 深色半透明覆盖层、焦点高亮环，布局自适应窗口数量（上限 7 列）
 - 菜单栏常驻图标（退出 / 权限设置）
 
-## 快速开始
+## 安装（下载即用）
+
+从 [Releases](https://github.com/acllm/alt-tab-dev/releases) 下载最新 `AltTab-Dev-<版本>.zip`：
+
+1. 解压，将 `AltTab Dev.app` 拖入「应用程序」
+2. **首次打开会被 Gatekeeper 拦截**（自签名应用，按下方说明放行）
+3. 在 系统设置 → 隐私与安全性 → **辅助功能** 中授权 AltTab Dev
+
+### 安全放行（自签名应用）
+
+本应用无 Apple 开发者账号（$99/年），以自签名分发，首次打开会提示「无法验证开发者」。放行任选其一：
+
+- **方式 A**：系统设置 → 隐私与安全性 → 拉到底 → 点「**仍要打开**」
+- **方式 B**：终端执行 `xattr -dr com.apple.quarantine /Applications/AltTab\ Dev.app`
+
+> 注意：TCC 权限按二进制签名记录，自签名下**每次升级新版本后需重新授权一次辅助功能**。仅影响升级场景，日常使用不受影响。
+
+## 从源码构建
 
 ```bash
 git clone https://github.com/acllm/alt-tab-dev.git
@@ -23,8 +42,6 @@ swift run AltTabTests           # 运行全部单元测试
 ./Scripts/make-app-bundle.sh    # 打包 build/AltTab Dev.app
 open "build/AltTab Dev.app"
 ```
-
-首次运行需在 系统设置 → 隐私与安全性 → **辅助功能** 中授权（app 会自动弹引导）。
 
 诊断模式（不启动 GUI）：
 

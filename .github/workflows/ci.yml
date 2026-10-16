@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build (debug)
+        run: swift build
+
+      - name: Unit tests (TDD suite)
+        run: swift run AltTabTests
+
+      - name: Bundle app (release + signed)
+        run: |
+          ./Scripts/make-app-bundle.sh
+          codesign -dv "build/AltTab Dev.app" 2>&1 | head -3
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AltTab-Dev-ci
+          path: build/AltTab Dev.app
+          if-no-files-found: error
