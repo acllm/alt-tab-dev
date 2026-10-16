@@ -42,18 +42,13 @@ public final class PermissionsCenter {
     }
 
     public func promptIfMissing() {
+        // Accessibility only: it is required for the hotkey and switching to
+        // work at all. Screen recording is an optional enhancement — the
+        // thumbnail provider detects at runtime whether captures return real
+        // content and silently falls back to app icons, so nagging the user
+        // (and the restart dance the permission requires) buys nothing.
         if !hasAccessibility {
             requestAccessibility()
-        }
-        // The screen-recording alert is advisory (the app degrades to
-        // icon-only thumbnails without it) — nagging on every launch is
-        // worse than the missing feature. Show it once, ever.
-        if !hasScreenRecording {
-            let defaultsKey = "didPromptScreenRecording"
-            if !UserDefaults.standard.bool(forKey: defaultsKey) {
-                UserDefaults.standard.set(true, forKey: defaultsKey)
-                requestScreenRecording()
-            }
         }
     }
 
