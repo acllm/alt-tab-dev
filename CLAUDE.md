@@ -8,7 +8,7 @@
 - 快速迭代（改核心逻辑、不想被打扰屏幕）用 `./Scripts/verify.sh --quick`（约 30 秒，跳过缩略图与 L5）。
 - TDD 红→绿小循环只需 `swift run AltTabTests`。
 - 验证产物（各层日志、截图、diag.txt）归档在 `build/e2e/<时间戳>/`；运行时诊断日志在 `/tmp/alttab-dev.log`。
-- L5 像素判定显示自适应（从 `/tmp/alttab-e2e/diag.txt` 的 `panel.frame` + `NSScreen.screens` 换算），换显示器无需改脚本。前置条件：GUI 会话未锁屏、终端持有屏幕录制授权；缺失时 L5 自动 SKIP 并给出原因。
+- L5 像素判定显示自适应（panel_diff.swift 从 `/tmp/alttab-e2e/diag.txt` 的 `panel.frame` + `panel.screen` 换算；锁屏 CG 兜底另读 `NSScreen.screens`），换显示器无需改脚本。前置条件：GUI 会话未锁屏、终端持有屏幕录制授权；缺失时 L5 自动 SKIP 并给出原因。
 
 ## 本机环境备注（开发用 Mac）
 
