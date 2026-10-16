@@ -95,11 +95,24 @@ Tests/AltTabTests/         TDD 测试运行器（67 个用例）
 
 ### 开发验证工具
 
+一条命令完成全部本机验证（构建 → 单测 → 枚举冒烟 → 缩略图管线 → JIT E2E → 真实 .app 截图判定）：
+
 ```bash
-./Scripts/verify-app.sh     # 真实 .app 在 launchd 环境的端到端自检（截图 + 像素判定）
-./Scripts/run-e2e.sh        # swift JIT 模式跑完整管线（继承终端权限）
-tail -f /tmp/alttab-dev.log # 运行时诊断日志（权限状态、热键事件、缩略图捕获）
+./Scripts/verify.sh          # 全量（屏幕会闪现面板约 7 秒，并重启运行中的 AltTab Dev）
+./Scripts/verify.sh --quick  # 跳过缩略图与真实 .app 层，不打扰屏幕
+tail -f /tmp/alttab-dev.log  # 运行时诊断日志（权限状态、热键事件、缩略图捕获）
 ```
+
+产物归档在 `build/e2e/<时间戳>/`（各层日志、截图、diag.txt）。分层细节：
+
+| 层 | 命令 | 验证内容 |
+|---|---|---|
+| L1/L2 | `swift build`、`swift run AltTabTests` | 编译 + TDD 用例（退出码判定） |
+| L3 | `.build/debug/AltTab --dump [--thumbnails <dir>]` | CG+AX 枚举冒烟、缩略图真实管线产出 |
+| L4 | `./Scripts/run-e2e.sh` | swift JIT 跑完整 UI 管线（继承终端权限） |
+| L5 | `./Scripts/verify-app.sh` | 真实 .app 在 launchd 环境自检（截图 + 像素判定） |
+
+L5 的像素判定是显示自适应的：面板区域由 app 写入的诊断坐标（`panel.frame` + `panel.screen`）换算成截图设备像素，换显示器/分辨率无需改脚本；证据含面板区域显著变化（方向随背景亮度而变）、Tab 后焦点环移动、面板窗口直截内容三重判定。（锁屏时的 CG 兜底证据另读 `NSScreen.screens`。）
 
 ## TDD 开发流程
 
