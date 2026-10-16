@@ -14,41 +14,20 @@ public final class PermissionsCenter {
     }
 
     public var hasScreenRecording: Bool {
-        // Without the permission CGWindowListCreateImage degrades silently:
-        // it still returns an image, but composited from the current screen
-        // (occluded windows are unreadable). The reliable signal is the CG
-        // window list: other apps' window *titles* are stripped without the
-        // grant. If any other app shows a title, the permission is on.
-        let option: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-        guard let list = CGWindowListCopyWindowInfo(option, kCGNullWindowID) as? [[String: Any]] else {
-            return false
-        }
-        let selfPID = ProcessInfo.processInfo.processIdentifier
-        for entry in list {
-            guard
-                let pid = entry[kCGWindowOwnerPID as String] as? Int32,
-                pid != selfPID,
-                (entry[kCGWindowLayer as String] as? Int ?? 0) == 0
-            else { continue }
-            if let title = entry[kCGWindowName as String] as? String, !title.isEmpty {
-                return true
-            }
-        }
-        // Saw other apps' windows but none with a title: treat as denied.
-        return list.contains { entry in
-            guard let pid = entry[kCGWindowOwnerPID as String] as? Int32 else { return false }
-            return pid != selfPID && (entry[kCGWindowLayer as String] as? Int ?? 0) == 0
-        } == false
+        // The official TCC check (10.15+). The old title-probing heuristic
+        // this replaced could not distinguish "denied" from "no window on
+        // screen happens to have a title".
+        CGPreflightScreenCaptureAccess()
     }
 
+    /// Guide the user once per launch toward whatever is missing. A working
+    /// hotkey implies Accessibility; without Screen Recording the switcher
+    /// can only show app icons, so that grant is worth asking for too.
     public func promptIfMissing() {
-        // Accessibility only: it is required for the hotkey and switching to
-        // work at all. Screen recording is an optional enhancement — the
-        // thumbnail provider detects at runtime whether captures return real
-        // content and silently falls back to app icons, so nagging the user
-        // (and the restart dance the permission requires) buys nothing.
         if !hasAccessibility {
             requestAccessibility()
+        } else if !hasScreenRecording {
+            requestScreenRecording()
         }
     }
 

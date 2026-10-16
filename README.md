@@ -9,11 +9,11 @@
 ## 功能
 
 - 全局热键 ⌥+Tab（全部窗口）/ ⌥+`（当前应用窗口），两种范围可在面板显示时实时切换
-- 窗口缩略图（带行为自检：捕获不可靠时自动降级为应用图标，绝不显示错误截图）
+- 窗口缩略图（官方 API 检测屏幕录制权限：未授权自动降级为应用图标，绝不显示错误截图）
 - MRU（最近使用优先）排序：焦点事件 + z 序快照双重校正
 - 支持最小化窗口与跨 Space 窗口切换
 - 深色半透明覆盖层、焦点高亮环，布局自适应窗口数量（上限 7 列）
-- 菜单栏常驻图标（退出 / 权限设置）
+- 菜单栏常驻图标（退出）
 
 ## 安装（下载即用）
 
@@ -21,7 +21,7 @@
 
 1. 解压，将 `AltTab Dev.app` 拖入「应用程序」
 2. **首次打开会被 Gatekeeper 拦截**（自签名应用，按下方说明放行）
-3. 在 系统设置 → 隐私与安全性 → **辅助功能** 中授权 AltTab Dev
+3. 在 系统设置 → 隐私与安全性 → **辅助功能** 中授权 AltTab Dev；想启用窗口缩略图，再在 **屏幕录制** 中授权（可选）
 
 ### 安全放行（自签名应用）
 
@@ -48,6 +48,7 @@ open "build/AltTab Dev.app"
 ```bash
 .build/debug/AltTab --dump              # 枚举当前可切换窗口并打印
 .build/debug/AltTab --dump --verbose    # 附带每个应用的 AX 枚举结果
+.build/debug/AltTab --dump --thumbnails /tmp/alttab-thumbs   # 走真实管线截取每窗口缩略图并存 PNG，肉眼核对正确性
 ```
 
 ## 权限
@@ -55,7 +56,7 @@ open "build/AltTab Dev.app"
 | 权限 | 必需性 | 用途 | 缺失时的行为 |
 |---|---|---|---|
 | 辅助功能 | 必需 | 全局热键、AX 窗口控制 | 热键完全不可用，app 会引导授权 |
-| 屏幕录制 | 可选 | 窗口缩略图 | 自动降级为应用图标，无弹窗打扰 |
+| 屏幕录制 | 可选 | 窗口缩略图 | 启动时引导一次授权；未授权自动降级为应用图标 |
 
 **开发者注意**：TCC 授权按代码签名身份记录。ad-hoc 签名在每次重编译后变化，会导致授权静默失效（设置里开关仍显示打开）。仓库的打包脚本默认使用本地稳定身份 `AltTab Dev Local Signing`（见 `Scripts/make-app-bundle.sh`），创建一次后重编译不再失效：
 
@@ -81,7 +82,7 @@ Sources/AltTabApp/         应用逻辑库（AppKit + AX + CG）
   WindowRepository         CG + AX 窗口枚举合并；AX 聚焦（dlsym 桥接窗口 id）
   HotkeyEventTap           CGEvent 全局键盘监听（⌥ 状态跟踪、合成事件吞并）
   SwitcherPanel            NSPanel 覆盖层 + 网格自绘视图
-  ThumbnailProvider        缩略图捕获 + 捕获能力行为自检
+  ThumbnailProvider        缩略图捕获（权限门控 + 图标降级，每次呼出重新截取）
   AppCoordinator           事件 → 状态机 → UI / 系统效果分发
   PermissionsCenter        TCC 权限检查与引导
 Scripts/                   打包、端到端验证工具
@@ -97,7 +98,7 @@ Tests/AltTabTests/         TDD 测试运行器（67 个用例）
 ```bash
 ./Scripts/verify-app.sh     # 真实 .app 在 launchd 环境的端到端自检（截图 + 像素判定）
 ./Scripts/run-e2e.sh        # swift JIT 模式跑完整管线（继承终端权限）
-tail -f /tmp/alttab-dev.log # 运行时诊断日志（权限状态、热键事件、探测结果）
+tail -f /tmp/alttab-dev.log # 运行时诊断日志（权限状态、热键事件、缩略图捕获）
 ```
 
 ## TDD 开发流程
@@ -121,10 +122,12 @@ chore: scaffold SPM package
 
 - 无偏好设置界面、无多快捷键自定义（固定 ⌥+Tab / ⌥+`）
 - 无多显示器角标、无鼠标交互、无黑名单/例外列表
-- 缩略图用 CGWindowListCreateImage（dlsym 运行时解析，规避 SDK 移除），未迁移 ScreenCaptureKit
+- 缩略图用 CGWindowListCreateImage（dlsym 运行时解析，规避 SDK 移除；`.optionIncludingWindow` 单窗口捕获），未迁移 ScreenCaptureKit
 - 单层 7 列自适应网格
 
 ## 已知限制
+
+- 其他 Space / 最小化的窗口无实时缩略图（系统 API 不返回不可见窗口的内容），显示应用图标
 
 - 屏幕录制授权需重启 app 生效（macOS 系统行为）；未授权时缩略图自动降级为应用图标
 - 屏幕锁定状态下窗口不合成（系统行为），锁屏中无法做视觉验证

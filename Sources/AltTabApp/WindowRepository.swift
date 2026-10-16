@@ -101,9 +101,13 @@ public final class WindowRepository {
                 let axTitle = Self.string(axWindow, kAXTitleAttribute) ?? ""
                 let title = !axTitle.isEmpty ? axTitle : (cg?.title ?? "")
                 let minimized = Self.bool(axWindow, kAXMinimizedAttribute) ?? false
+                // AX rects arrive only for windows missing from the CG list
+                // (minimized, other Spaces) — convert their coordinate space
+                // so `bounds` always matches CG's top-left-origin globals.
+                let axBounds = Self.rect(axWindow).map(Self.toCGGlobal)
                 let bounds = minimized
-                    ? (Self.rect(axWindow) ?? cg?.bounds ?? .zero)
-                    : (cg?.bounds.isEmpty == false ? cg!.bounds : (Self.rect(axWindow) ?? .zero))
+                    ? (axBounds ?? cg?.bounds ?? .zero)
+                    : (cg?.bounds.isEmpty == false ? cg!.bounds : (axBounds ?? .zero))
 
                 raws.append(RawWindowInfo(
                     windowID: id,
@@ -195,6 +199,16 @@ public final class WindowRepository {
     }
 
     // MARK: - Private
+
+    /// AX positions use the AppKit-style global space (origin at the
+    /// bottom-left of the main display, y up); CG window bounds use a
+    /// top-left origin (y down). Flip so both sources produce rects in
+    /// the same space — CG's — which capture APIs also expect.
+    private static func toCGGlobal(_ rect: CGRect) -> CGRect {
+        let main = CGDisplayBounds(CGMainDisplayID())
+        return CGRect(x: rect.minX, y: main.maxY - rect.maxY,
+                      width: rect.width, height: rect.height)
+    }
 
     /// The cached AX ref may be stale (window closed/reopened) — re-enumerate
     /// the app's windows and match by id, falling back to title equality.
